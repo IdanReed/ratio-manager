@@ -5,6 +5,7 @@
 //! rollout --days 7 --episodes 20        # longer, more seeds
 //! rollout --events /slow/ratio-manager/events/2026-11-03.jsonl.zst
 //! rollout --params sim/params/2026-11-10.json
+//! rollout --train 40                    # also train a policy online against it
 //! rollout --validate                    # just the gate, exit 1 if it fails
 //! ```
 //!
@@ -26,6 +27,8 @@ struct Args {
     params: Option<String>,
     validate_only: bool,
     seed: u64,
+    /// Episodes of online RL to run after the reference policies. 0 skips it.
+    train: usize,
 }
 
 impl Default for Args {
@@ -41,6 +44,7 @@ impl Default for Args {
             params: None,
             validate_only: false,
             seed: 1,
+            train: 0,
         }
     }
 }
@@ -80,6 +84,10 @@ fn parse() -> Result<Args> {
             }
             "--seed" => {
                 a.seed = next(i)?.parse()?;
+                i += 1;
+            }
+            "--train" => {
+                a.train = next(i)?.parse()?;
                 i += 1;
             }
             "--validate" => a.validate_only = true,
@@ -195,6 +203,55 @@ fn main() -> Result<()> {
                 }
             }
         }
+    }
+
+    if args.train > 0 {
+        // The online-RL arm: a policy trained by acting in the simulator
+        // rather than by reading the fleet's history. Only as good as the
+        // simulator, so the gate above decides whether to believe it.
+        println!("\n--- online RL: {} training episodes", args.train);
+        let mut learner = ratio_sim::learn::LinearPolicy::new(args.seed);
+        let p = params.clone();
+        let (days, per_day, fl, replay2) =
+            (args.days, args.per_day, args.freeleech_share, replay.clone());
+        let report = ratio_sim::learn::train(&mut learner, args.train, until, 0.2, move |e| {
+            let seed = 7_000_003u64.wrapping_add(e);
+            let releases = match &replay2 {
+                Some(r) => r.clone(),
+                None => {
+                    use rand::SeedableRng;
+                    let mut rng = rand::rngs::StdRng::seed_from_u64(seed ^ 0xa5a5);
+                    traces::synthetic(days, per_day, fl, &mut rng)
+                }
+            };
+            Sim::new(p.clone(), releases, seed)
+        });
+        for line in report.render().lines() {
+            println!("  {line}");
+        }
+
+        learner.explore = false;
+        let mut totals = Vec::new();
+        for e in 0..args.episodes {
+            let seed = args.seed.wrapping_mul(1_000_003).wrapping_add(e);
+            let releases = match &replay {
+                Some(r) => r.clone(),
+                None => {
+                    use rand::SeedableRng;
+                    let mut rng = rand::rngs::StdRng::seed_from_u64(seed ^ 0xa5a5);
+                    traces::synthetic(args.days, args.per_day, args.freeleech_share, &mut rng)
+                }
+            };
+            let mut sim = Sim::new(params.clone(), releases, seed);
+            totals.push(sim.run(&mut learner, until));
+        }
+        let n = totals.len() as f64;
+        let up: f64 = totals.iter().map(|r| r.uploaded_gb).sum::<f64>() / n;
+        let net: f64 = totals.iter().map(|r| r.total()).sum::<f64>() / n;
+        println!(
+            "\n{:<15} up {:>9.1} GB   net {:>9.1}   (greedy, on the same episodes as above)",
+            "reinforce", up, net
+        );
     }
 
     if args.validate_only && gate_failures > 0 {

@@ -10,6 +10,10 @@ rollout — run policies against the ratio simulator and report what each earned
   --per-day <n>            synthetic release arrivals per day (default 900)
   --freeleech-share <f>    synthetic freeleech fraction (default 0.08)
   --seed <n>               base seed (default 1)
+  --train <n>              after the reference policies, train a linear policy
+                           online against the simulator for n episodes and
+                           report what it learned. Only as good as the
+                           calibration — read the gate first.
   --validate               exit non-zero if the validation gate fails
   -h, --help               this text
 

@@ -16,6 +16,7 @@
 
 pub mod boxes;
 pub mod env;
+pub mod learn;
 pub mod link;
 pub mod params;
 pub mod policies;

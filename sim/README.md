@@ -68,3 +68,39 @@ which it is attached to. That is the part worth protecting as this grows.
 
 Everything is seeded. The same seed gives the same rollout; a rollout records
 which calibration artefact produced it.
+
+## What it has found so far
+
+On **synthetic** releases with the compiled-in measurements, so none of this is
+evidence about the fleet — only about the code and about each other:
+
+| Policy | net, 2 days | Note |
+|---|---|---|
+| `nothing` | −2.8 | the floor: rent, and nothing earned |
+| `reinforce` | 2866 | trained online from zero weights, no priors |
+| `table-baseline` | 3504 | the live rule, with the fleet's measured priors |
+| `oracle` | 3780 | perfect knowledge, upper bound on per-release scoring |
+| `everywhere` | 10091 | races everything — see below |
+
+Three things worth taking from it:
+
+- **The oracle is only 8% above the baseline.** If that survives calibration,
+  most of the available gain is not in better per-release scoring, and a
+  learned ranker has less headroom than it might appear.
+- **`everywhere` dominates everything**, which it should not. Racing every
+  release on every box ought to choke the disks and stop paying. That it keeps
+  paying is a statement about this calibration, not about the fleet, and is one
+  more reason the gate fails: the contention is not yet biting hard enough.
+- **The online-RL arm rediscovered a measured fact.** From zero weights it
+  learned `demand` positive, `pulsed` and `seedit4me` positive, and **`home`
+  negative** — which is the fleet's own finding that home earns 0.05–0.08 a
+  race, arrived at independently.
+
+One bug worth recording, because the guard against it is now a test. The
+policy's features were unscaled — `demand` runs to 60, `placeable` to tens of
+terabytes — so a weight of order one saturated the softmax and the policy went
+deterministic within a few episodes. It kept reporting a rising training curve
+while having stopped exploring. The signature was `mean propensity 1.00` in the
+train report; scaling the features took the greedy result from 1595 to 2866.
+That is what the propensity log is for, and it is why the live bandit logs one
+too.
