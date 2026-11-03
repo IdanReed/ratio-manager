@@ -2,7 +2,7 @@
 //!
 //! These are references, not the shipping policy. The policy that ships is an
 //! HTTP client of `/api/v1`; these exist so the simulator can be validated and
-//! so a learned policy has something to beat. Three of them:
+//! so a learned policy has something to beat. Four of them:
 //!
 //!  - `Nothing`: adds nothing. The floor, and the only way to see what the
 //!    standing library earns by itself.
@@ -10,6 +10,9 @@
 //!    demonstration that more adds are not more upload once the disks choke.
 //!  - `TableBaseline`: the bucketed-median rule the live manager uses, so a
 //!    simulated result can be read against the fleet's real numbers.
+//!  - `Oracle`: scores with the simulator's own ground truth. Not deployable —
+//!    an upper bound, and the number that says whether the gap left is a
+//!    modelling problem or a policy one.
 
 use crate::env::{Act, Policy, Sim};
 use std::collections::HashMap;
@@ -161,5 +164,111 @@ impl Policy for TableBaseline {
 
     fn name(&self) -> &str {
         "table-baseline"
+    }
+}
+
+/// The reference every learned policy has to beat: scores each box by
+/// integrating the swarm's *true* offered demand against that box's spare
+/// capacity, over a horizon, using the simulator's own parameters.
+///
+/// This is **not a deployable policy and not an MPC**. A real
+/// model-predictive controller plans against a *calibrated* model and is
+/// therefore only as good as the calibration; this one reads the ground
+/// truth the simulator drew — the swarm's actual peak, its actual competitor
+/// count — which no policy in production can see. It is an upper bound on
+/// what any per-release scoring rule could achieve if its model of the world
+/// were perfect.
+///
+/// That makes it the most useful number in the comparison. If a learned
+/// policy lands near it, the remaining gain is in better *decisions* and
+/// there is little left to win. If this is far above everything else, the
+/// gap is a modelling problem, not a policy problem — the answer is a better
+/// estimate of what a swarm will do, not a cleverer sequence model.
+pub struct Oracle {
+    /// Hours ahead to integrate.
+    pub horizon_h: f64,
+    /// Expected return below which an add is not worth making.
+    pub floor: f64,
+    pub max_boxes: usize,
+}
+
+impl Oracle {
+    pub fn new() -> Self {
+        Self { horizon_h: 24.0, floor: 0.2, max_boxes: 2 }
+    }
+
+    /// GB this box would earn on this release, by the simulator's own models.
+    ///
+    /// Deliberately coarse — a 5-minute step and no contention from the
+    /// box's other torrents. Modelling that properly would mean replaying
+    /// the whole fleet per candidate, which is the full planning problem;
+    /// this is the bound, not the plan.
+    fn expected_gb(&self, sim: &Sim, bx: &str, release: usize) -> f64 {
+        let Some(b) = sim.box_by_name(bx) else { return 0.0 };
+        let sw = &sim.swarms[release];
+        let rel = &sim.releases[release];
+        let step = 300.0;
+        let since0 = (sim.now - rel.announce_at).max(0.0);
+        let mut total = 0.0;
+        let mut t = since0;
+        // A copy cannot serve before it has something to serve, and cannot
+        // finish faster than the box's cap allows.
+        let fill_s = rel.size * 1024.0 / b.dl_cap.max(1e-6);
+        while t < since0 + self.horizon_h * 3600.0 {
+            let progress = ((t - since0) / fill_s.max(1e-6)).clamp(0.0, 1.0);
+            let ours = sw.serving_capacity(b.line_up, progress);
+            let offered = sw.offered_to(t, ours, 0.0);
+            // What the box could actually place, given it is also writing.
+            let flow = b.resolve(0.0, offered);
+            total += flow.up * step / 1024.0;
+            t += step;
+        }
+        total / rel.size.max(1e-9)
+    }
+}
+
+impl Default for Oracle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Policy for Oracle {
+    fn on_announce(&mut self, sim: &Sim, release: usize) -> Vec<Act> {
+        let r = &sim.releases[release];
+        if !r.freeleech {
+            return Vec::new();
+        }
+        let mut ranked: Vec<(f64, String)> = sim
+            .boxes
+            .iter()
+            .filter(|b| !b.spent() && sim.has_room(&b.name, r.size))
+            .map(|b| (self.expected_gb(sim, &b.name, release), b.name.clone()))
+            .filter(|(e, _)| *e >= self.floor)
+            .collect();
+        ranked.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        ranked
+            .into_iter()
+            .take(self.max_boxes)
+            .map(|(_, name)| Act::Add { box_name: name, release })
+            .collect()
+    }
+
+    fn on_tick(&mut self, sim: &Sim) -> Vec<Act> {
+        // Same eviction rule as the baseline: the comparison is about which
+        // adds get made, so holding evictions constant keeps it honest.
+        let mut acts = Vec::new();
+        for t in sim.torrents.iter().filter(|t| t.live()) {
+            let size = sim.releases[t.release].size;
+            let unregistered = t.registered_at.is_none() && sim.now - t.added_at > 3600.0;
+            if t.ratio(size) >= 1.0 || unregistered {
+                acts.push(Act::Remove { box_name: t.box_name.clone(), torrent: t.id });
+            }
+        }
+        acts
+    }
+
+    fn name(&self) -> &str {
+        "oracle (upper bound)"
     }
 }

@@ -14,7 +14,7 @@
 use anyhow::{Context, Result};
 use ratio_sim::env::{Policy, Release, Sim};
 use ratio_sim::params::Params;
-use ratio_sim::policies::{Everywhere, Nothing, TableBaseline};
+use ratio_sim::policies::{Everywhere, Nothing, Oracle, TableBaseline};
 use ratio_sim::{traces, validate};
 
 struct Args {
@@ -116,7 +116,12 @@ fn zstd_decode(bytes: &[u8]) -> Result<Vec<u8>> {
 }
 
 fn policies() -> Vec<Box<dyn Policy>> {
-    vec![Box::new(Nothing), Box::new(TableBaseline::new()), Box::new(Everywhere)]
+    vec![
+        Box::new(Nothing),
+        Box::new(TableBaseline::new()),
+        Box::new(Oracle::new()),
+        Box::new(Everywhere),
+    ]
 }
 
 fn main() -> Result<()> {
