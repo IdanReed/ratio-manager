@@ -350,3 +350,81 @@ def test_a_generator_needs_enough_curves_to_fit():
 def test_sampling_before_fitting_is_an_error():
     with pytest.raises(RuntimeError):
         ParametricCopula().sample(5, np.random.default_rng(0))
+
+
+# --- the parquet path ---------------------------------------------------------
+
+
+def test_the_parquet_reader_yields_the_same_envelope_as_jsonl(tmp_path):
+    pq = pytest.importorskip("pyarrow.parquet")
+    import pyarrow as pa
+
+    day = "2026-11-03"
+    d = tmp_path / "kind=decision" / f"date={day}"
+    d.mkdir(parents=True)
+    payload = {"name": "R", "trigger": "announce", "candidates": []}
+    table = pa.table(
+        {
+            "v": pa.array([1], pa.int32()),
+            "ts": pa.array(
+                [datetime(2026, 11, 3, 3, 25, 51, tzinfo=timezone.utc)],
+                pa.timestamp("ms", tz="UTC"),
+            ),
+            "seq": pa.array([42], pa.uint64()),
+            "kind": pa.array(["decision"]),
+            "box": pa.array(["pulsed"]),
+            "hash": pa.array(["abc"]),
+            "actor": pa.array(["baseline"]),
+            "data": pa.array([json.dumps(payload)]),
+        }
+    )
+    pq.write_table(table, d / "part-0.parquet")
+
+    events = list(__import__("ratio_ml.data", fromlist=["x"]).read_parquet(tmp_path))
+    assert len(events) == 1
+    e = events[0]
+    # The envelope has to match the JSONL form exactly, or every downstream
+    # function would need to know which path the events came from.
+    assert e["kind"] == "decision"
+    assert e["seq"] == 42
+    assert e["hash"] == "abc"
+    assert e["data"] == payload
+    assert ts_of(e).year == 2026 and ts_of(e).hour == 3
+    assert parse_decisions(events)[0].name == "R"
+
+
+def test_the_parquet_reader_filters_by_kind_and_day(tmp_path):
+    pq = pytest.importorskip("pyarrow.parquet")
+    import pyarrow as pa
+    from ratio_ml.data import read_parquet
+
+    def write(kind: str, day: str) -> None:
+        d = tmp_path / f"kind={kind}" / f"date={day}"
+        d.mkdir(parents=True)
+        pq.write_table(
+            pa.table(
+                {
+                    "v": pa.array([1], pa.int32()),
+                    "ts": pa.array(
+                        [datetime(2026, 11, 3, tzinfo=timezone.utc)],
+                        pa.timestamp("ms", tz="UTC"),
+                    ),
+                    "seq": pa.array([1], pa.uint64()),
+                    "kind": pa.array([kind]),
+                    "box": pa.array([None], pa.string()),
+                    "hash": pa.array([None], pa.string()),
+                    "actor": pa.array([None], pa.string()),
+                    "data": pa.array(["{}"]),
+                }
+            ),
+            d / "part-0.parquet",
+        )
+
+    write("decision", "2026-11-03")
+    write("box_state", "2026-11-03")
+    write("decision", "2026-11-04")
+
+    assert len(list(read_parquet(tmp_path))) == 3
+    assert len(list(read_parquet(tmp_path, kinds=["decision"]))) == 2
+    assert len(list(read_parquet(tmp_path, days=["2026-11-03"]))) == 2
+    assert len(list(read_parquet(tmp_path, kinds=["decision"], days=["2026-11-04"]))) == 1

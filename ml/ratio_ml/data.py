@@ -90,6 +90,77 @@ def read_days(dirpath: str | Path, days: Iterable[str] | None = None) -> Iterato
         yield from read_jsonl(f)
 
 
+def read_parquet(
+    root: str | Path,
+    kinds: Iterable[str] | None = None,
+    days: Iterable[str] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Yield events from the nightly export, in day then sequence order.
+
+    The exporter writes ``<root>/kind=<kind>/date=<YYYY-MM-DD>/part-0.parquet``
+    with the envelope as columns and ``data`` as a JSON string, so this yields
+    the same dicts :func:`read_jsonl` does and every downstream function is
+    indifferent to which path the events came from.
+
+    This is the fast path. A day the exporter has not reached yet is only in
+    JSONL, so a full history generally means reading both.
+    """
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as e:  # pragma: no cover
+        raise ImportError(
+            "reading the Parquet export needs pyarrow: pip install '.[parquet]'. "
+            "The JSONL path (read_jsonl / read_days) needs only zstandard."
+        ) from e
+
+    root = Path(root)
+    kind_dirs = sorted(root.glob("kind=*"))
+    if kinds is not None:
+        want = set(kinds)
+        kind_dirs = [d for d in kind_dirs if d.name.split("=", 1)[1] in want]
+
+    # Day order across kinds, so a consumer sees the log roughly as it was
+    # written rather than kind by kind.
+    files: list[tuple[str, Path]] = []
+    for kd in kind_dirs:
+        for dd in sorted(kd.glob("date=*")):
+            day = dd.name.split("=", 1)[1]
+            if days is not None and day not in set(days):
+                continue
+            for f in sorted(dd.glob("*.parquet")):
+                files.append((day, f))
+    files.sort(key=lambda p: p[0])
+
+    for _day, f in files:
+        # `ParquetFile`, not `read_table`: the latter goes through the dataset
+        # API, which infers Hive partitioning from the `kind=`/`date=`
+        # directories and then collides with the real `kind` column the
+        # exporter also writes ("incompatible types: string vs dictionary").
+        # Reading the file directly sidesteps the discovery entirely.
+        table = pq.ParquetFile(f).read()
+        cols = {name: table.column(name).to_pylist() for name in table.schema.names}
+        n = table.num_rows
+        for i in range(n):
+            raw = cols.get("data", [None] * n)[i]
+            ts = cols["ts"][i]
+            yield {
+                "v": cols.get("v", [1] * n)[i],
+                # The column is a timestamp; the rest of the pipeline expects
+                # the envelope's string form.
+                "ts": (
+                    ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+                    if hasattr(ts, "astimezone")
+                    else str(ts)
+                ),
+                "seq": cols.get("seq", [0] * n)[i],
+                "kind": cols["kind"][i],
+                "box": cols.get("box", [None] * n)[i],
+                "hash": cols.get("hash", [None] * n)[i],
+                "actor": cols.get("actor", [None] * n)[i],
+                "data": json.loads(raw) if isinstance(raw, str) and raw else {},
+            }
+
+
 def ts_of(event: dict[str, Any]) -> datetime:
     """The envelope's timestamp, as an aware UTC datetime."""
     raw = event["ts"]
