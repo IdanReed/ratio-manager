@@ -224,8 +224,20 @@ impl Baseline {
     }
 
     async fn carry_out(&self, plan: &Plan, add: Action, why: &str) -> bool {
+        // Name the torrent being removed, not only the one it makes room for.
+        // "evicted for <incoming>" reads as though <incoming> were the victim,
+        // which is alarming to anyone reading the log when the incoming name
+        // happens to look like something the arrs manage. It cost a monitoring
+        // session a snapshot diff to establish that nothing was wrong.
+        let view = self.app.view(&plan.bx);
         for h in &plan.evict {
-            let out = self.exec.run("baseline", Action::Remove { bx: plan.bx.clone(), hash: h.clone(), reason: format!("evicted for {why}") }, json!({})).await;
+            let gone = view
+                .as_ref()
+                .and_then(|v| v.torrents.get(h))
+                .map(|t| s(t, "name").to_string())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| h.chars().take(8).collect());
+            let out = self.exec.run("baseline", Action::Remove { bx: plan.bx.clone(), hash: h.clone(), reason: format!("removed {gone}, making room for {why}") }, json!({})).await;
             if !out.executed() {
                 return false;
             }
