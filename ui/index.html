@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ratio manager</title>
+<link rel="stylesheet" href="uPlot.min.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <h1>Ratio manager</h1>
+  <nav id="tabs">
+    <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="account">Account</button>
+    <button data-tab="boxes">Boxes</button>
+    <button data-tab="races">Races</button>
+    <button data-tab="candidates">Candidates</button>
+    <button data-tab="decisions">Decisions</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="data">Data</button>
+    <button data-tab="events">Events</button>
+  </nav>
+  <span id="status"></span>
+</header>
+<div id="halt" hidden>
+  <strong>Halted.</strong> <span id="halt-reason"></span>
+  <button id="halt-clear">Clear halt</button>
+</div>
+<main>
+  <section id="overview" class="tab on">
+    <div class="row">
+      <label>Range <select id="range"><option value="6h">6 h</option><option value="7d">7 d</option><option value="30d">30 d</option></select></label>
+    </div>
+    <div id="kpis" class="kpis"></div>
+    <h2>Upload rate</h2><div id="chart-up" class="chart"></div>
+    <h2>Torrents</h2><div id="chart-n" class="chart"></div>
+    <h2>Disk used</h2><div id="chart-disk" class="chart"></div>
+    <h2>Traffic used</h2><div id="chart-traffic" class="chart"></div>
+  </section>
+  <section id="account" class="tab"><div id="account-body"></div></section>
+  <section id="boxes" class="tab"><div id="box-cards" class="cards"></div></section>
+  <section id="races" class="tab">
+    <div class="row"><label>Days <select id="race-days"><option>1</option><option selected>3</option><option>7</option><option>30</option></select></label></div>
+    <div id="race-table"></div>
+  </section>
+  <section id="candidates" class="tab"><div id="cand-body"></div></section>
+  <section id="decisions" class="tab"><div id="dec-table"></div></section>
+  <section id="settings" class="tab">
+    <p>The full settings document. Saving stores only what differs from the defaults, validated and audited.</p>
+    <textarea id="settings-text" spellcheck="false"></textarea>
+    <div class="row"><button id="settings-save">Save</button> <span id="settings-msg"></span></div>
+    <h2>Audit</h2><div id="audit"></div>
+  </section>
+  <section id="data" class="tab"><div id="data-table"></div></section>
+  <section id="events" class="tab">
+    <div class="row"><label>Kinds <input id="ev-kinds" placeholder="e.g. announce,decision,action,alert"></label> <button id="ev-go">Follow</button></div>
+    <pre id="ev-log"></pre>
+  </section>
+</main>
+<script src="uPlot.iife.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

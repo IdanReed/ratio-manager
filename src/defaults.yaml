@@ -1,0 +1,101 @@
+# The code defaults. Settings edited in the UI are stored as overrides on top
+# of these (only the keys that differ), so a new default reaches every key the
+# UI never touched.
+account:
+  tracker: torrentleech
+  # H&R exempt until this date. A torrent completed before it stays exempt for
+  # good; one completed after it is under 1:1 / hnr_min_seed_days.
+  vip_until: "2027-03-01"
+  vip_cost_eur_month: 12
+  # TL's minimum is per class: 10 days (Registered) down to 4 (TL God); 14
+  # keeps a margin.
+  hnr_min_seed_days: 14
+  # Below it TL adds wait times and slot limits.
+  min_overall_ratio: 0.85
+intake:
+  freeleech_only: true
+  size_gb: [1, 100]
+  # Matched against the announce's category and name, case-insensitively.
+  exclude: [cam, telesync, "ts/tc"]
+scout:
+  scan_every_s: 120
+  scan_pages: 1
+  refresh: { active_every_s: 60, settled_every_min: 30, active_hours: 6, track_hours: 48 }
+  # Both must be crossed for a market delta.
+  delta: { relative: 0.25, leechers: 5 }
+  # Wave 2: every release, not only freeleech candidates.
+  every_release: true
+  rss_every_s: 120
+  schedule_min: [0, 2, 5, 15, 30, 60, 180, 720]
+scoring:
+  horizon_h: 24
+  min_ratio: 0.05
+  swap_margin: 1.5
+  keep_above_mib: 1
+  max_download_h: 6
+  # A holding's upload over the horizon, as a share of its last 30 min's rate.
+  holding_decay: 0.5
+  bias: { race: 1.0, scout: 1.0 }
+  # Seeded ratios per box and source, until the nightly tables have samples.
+  priors:
+    default: { race: 0.8, scout: 0.4 }
+    seedit4me: { race: 1.1, scout: 0.5 }
+    pulsed: { race: 0.65, scout: 0.5 }
+    home: { race: 0.06, scout: 0.3 }
+  # Smallest sample a table cell needs before it replaces the prior.
+  min_samples: 5
+  # A scout pick needs at least this many live seeders to download at all.
+  min_seeders: 1
+  # Don't re-add what was evicted this recently.
+  readd_after_h: 24
+reannounce:
+  early: { every_s: 3, for_min: 5 }
+  late: { every_s: 60, until_min: 60 }
+  delete_after_min: 60
+experiments:
+  join_delay: { share: 0.1, delays_s: [30, 60] }
+politeness:
+  torrent_fetch_every_s: 5
+  scrape_per_s: 1
+  scrape_batch: 50
+handoff:
+  per_tick: 2
+  max_active: 2
+  # A racer box hands off while it cannot place this much.
+  need_gb: 100
+boxes:
+  home:
+    disk: { quota_gb: 4000, reserve_gb: 50 }
+    evict: true
+    download_cap_mib: 30
+    focus_downloads: 3
+    trickle_kib: 256
+    downloads: { max_active: 20, busy_above_mib: 1000000 }
+    scoring: { bias: { race: 0 } }
+  seedit4me:
+    expires: "2026-11-30"
+    cost_eur_month: 11.99
+    traffic: { quota_tb: 5, reset_day: 9, throttle_mbit: 10, mode: race_to_cap, base_tb: 0 }
+    disk: { quota_gb: 1500, reserve_gb: 50 }
+    evict: true
+    download_cap_mib: 100
+    disk_cache_mib: 1024
+    async_io_threads: 8
+    downloads: { max_active: 3, busy_above_mib: 70 }
+    scoring: { bias: { scout: 0 } }
+  pulsed:
+    cost_eur_month: 27.99
+    traffic: { quota_tb: 0 }
+    disk: { quota_gb: 4500, reserve_gb: 50 }
+    evict: true
+    download_cap_mib: 20
+    disk_cache_mib: 1024
+    async_io_threads: 8
+    downloads: { max_active: 4, busy_above_mib: 14 }
+policy:
+  home: baseline
+  seedit4me: baseline
+  pulsed: baseline
+bandwidth:
+  classes: [household, library, ratio]
+  weights: { household: 70, library: 20, ratio: 10 }

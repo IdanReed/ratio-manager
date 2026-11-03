@@ -1,0 +1,39 @@
+# The local rig's registry (dev/run.sh substitutes @RIG@).
+ntfy_url: http://127.0.0.1:18093/test
+prowlarr:
+  url: http://127.0.0.1:18091
+  api_key_env: PROWLARR_API_KEY
+  indexers: ["TorrentLeech (freeleech)"]
+autobrr:
+  url: http://127.0.0.1:18092
+  user: idan
+  password_env: AUTOBRR_PASSWORD
+  intake_url: http://127.0.0.1:18080/api/v1/intake/autobrr
+  intake_from_host: localhost
+  retire_filters: ["TorrentLeech freeleech race"]
+  retire_clients: [seedbox, pulsed]
+tl:
+  rss_key_env: TL_RSS_KEY
+  rss_url: "http://127.0.0.1:18090/rss/{key}"
+  base_url: "http://127.0.0.1:18090"
+boxes:
+  - name: home
+    url: http://127.0.0.1:18083
+    user_env: QB_USER
+    password_env: QB_PASS
+    save_path: "@RIG@/home/dl/ratio"
+    tunnel: true
+  - name: seedit4me
+    url: http://127.0.0.1:18081
+    user_env: QB_USER
+    password_env: QB_PASS
+    manage_prefs: true
+    private_only: true
+    tl_registered_ip: 127.0.0.1
+  - name: pulsed
+    url: http://127.0.0.1:18082
+    user_env: QB_USER
+    password_env: QB_PASS
+    manage_prefs: true
+    private_only: true
+    tl_registered_ip: 127.0.0.1
