@@ -129,9 +129,11 @@ impl BoxCfg {
             .ok()
             .and_then(|u| u.host_str().map(|s| s.to_string()))
     }
-    /// A login still a `changeme` placeholder leaves the box off.
+    /// A box is off while its password is still a `changeme` placeholder. The
+    /// user name is only required to be set: a generated value seeded into the
+    /// client (home's) can legitimately contain "changeme".
     pub fn enabled(&self) -> bool {
-        !placeholder(&self.user()) && !placeholder(&self.password())
+        !self.user().is_empty() && !placeholder(&self.password())
     }
     pub fn is_seedbox(&self) -> bool {
         self.tl_registered_ip.is_some()
@@ -552,6 +554,16 @@ mod tests {
         let (_, full) = Settings::from_overrides(&json!({"scoring": {"swap_margin": 2.0}})).unwrap();
         let d = diff(&defaults_value(), &full).unwrap();
         assert_eq!(d, json!({"scoring": {"swap_margin": 2.0}}));
+    }
+
+    #[test]
+    fn a_generated_user_name_is_not_a_placeholder() {
+        let b: BoxCfg = serde_yaml::from_str("{name: home, url: 'http://x', user_env: RM_T_USER, password_env: RM_T_PASS}").unwrap();
+        std::env::set_var("RM_T_USER", "changeme_a1b2c3d4");
+        std::env::set_var("RM_T_PASS", "real-password");
+        assert!(b.enabled());
+        std::env::set_var("RM_T_PASS", "changeme");
+        assert!(!b.enabled());
     }
 
     #[test]

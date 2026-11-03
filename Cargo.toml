@@ -1,6 +1,6 @@
 [package]
 name = "ratio-manager"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "TorrentLeech ratio building across home and rented seedboxes: sensors, an event bus, a baseline policy, a guard, drivers, an event log and a dashboard"
 license = "MIT"
