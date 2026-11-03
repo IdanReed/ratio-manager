@@ -543,12 +543,19 @@ def marginal_fidelity(real: Sequence[Curve], fake: Sequence[Curve]) -> dict[str,
     }
 
 
-def mode_coverage(real: Sequence[Curve], fake: Sequence[Curve]) -> float:
-    """Fraction of real curves that some synthetic curve resembles.
+def mode_coverage(real: Sequence[Curve], fake: Sequence[Curve], k: int = 3) -> float:
+    """Fraction of real curves that some synthetic curve actually resembles.
 
-    The GAN check. A collapsed generator scores near zero here while its
-    marginals can still look respectable, which is exactly the failure that
-    eyeballing samples misses.
+    The GAN check. A collapsed generator scores low here while its marginals
+    can still look respectable, which is exactly the failure that eyeballing
+    samples misses.
+
+    The threshold is **per real curve**: its distance to its own k-th nearest
+    real neighbour. A real curve counts as covered only if a synthetic curve
+    comes as close to it as its real neighbours do. A single global threshold
+    — the median pairwise distance, say — is far too lenient on this data,
+    where every curve is the same broad shape: one copied curve then scores
+    two thirds "coverage".
     """
     if not real or not fake:
         return 0.0
@@ -556,12 +563,16 @@ def mode_coverage(real: Sequence[Curve], fake: Sequence[Curve]) -> float:
     f = np.stack([c.leechers for c in fake])
     scale = float(np.abs(r).max()) or 1.0
     r, f = r / scale, f / scale
-    # A real curve is covered if some synthetic curve is nearer to it than the
-    # median distance between two real curves.
-    dists_rr = np.linalg.norm(r[:, None, :] - r[None, :, :], axis=2)
-    thresh = float(np.median(dists_rr[dists_rr > 0])) if (dists_rr > 0).any() else 1.0
-    dists_rf = np.linalg.norm(r[:, None, :] - f[None, :, :], axis=2)
-    return float(np.mean(dists_rf.min(axis=1) < thresh))
+
+    d_rr = np.linalg.norm(r[:, None, :] - r[None, :, :], axis=2)
+    np.fill_diagonal(d_rr, np.inf)  # a curve is not its own neighbour
+    kk = min(k, max(d_rr.shape[0] - 1, 1))
+    # Distance to the kk-th nearest other real curve, per curve.
+    radius = np.sort(d_rr, axis=1)[:, kk - 1]
+    radius = np.where(np.isfinite(radius), radius, 0.0)
+
+    d_rf = np.linalg.norm(r[:, None, :] - f[None, :, :], axis=2)
+    return float(np.mean(d_rf.min(axis=1) <= radius))
 
 
 @dataclass

@@ -75,7 +75,12 @@ class Ranker:
 
     # -- api ---------------------------------------------------------------
 
-    def fit(self, rows: list[Example]) -> Fit:
+    def fit(self, rows: list[Example]) -> "Ranker":
+        """Fit, and return self so a ranker can be built in one expression.
+
+        The fit itself is kept on ``self.fit_``, where ``feature_table()``
+        reads it.
+        """
         if not rows:
             raise ValueError("no examples to fit — check the horizon and the join")
         xs = np.asarray([r.x for r in rows], dtype=float)
@@ -96,7 +101,7 @@ class Ranker:
         dof = max(len(ys) - d, 1)
         noise = float(resid @ resid / dof)
         self.fit_ = Fit(weights=weights, covariance=cov, noise_var=noise, n=len(ys))
-        return self.fit_
+        return self
 
     def predict(self, xs: list[list[float]]) -> np.ndarray:
         """Posterior mean return for each row."""
