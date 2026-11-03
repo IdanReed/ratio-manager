@@ -61,32 +61,54 @@ def test_iso_week_is_the_split_unit():
     assert iso_week(a).startswith("2026-W")
 
 
-def test_parse_decisions_keeps_candidates_and_the_chosen_one():
+def test_parse_decisions_keeps_the_plans_and_the_chosen_box():
+    # The shape the manager actually emits: `plans` with `est`, and `chosen` as
+    # a list of box names rather than a flag on each plan. Written against the
+    # design doc's prose instead, this parsed zero decisions from the real log
+    # — see the real-fixture tests at the end of this file.
     e = event(
         "decision",
         "2026-11-01T12:00:00.000Z",
         hash="abc",
         name="Some.Release",
         trigger="announce",
-        candidates=[
-            {"box": "pulsed", "score": 0.6, "features": {"size_gb": 20.0, "demand": 3.0}},
-            {"box": "seedit4me", "score": 1.4, "features": {"size_gb": 20.0, "demand": 3.0},
-             "chosen": True},
+        chosen=["seedit4me"],
+        plans=[
+            {"box": "pulsed", "est": 0.6, "basis": "prior 0.65 x demand 3.00",
+             "eligible": False, "why": ["busy: 4 downloading at 20 MiB/s"],
+             "evict": [], "placeable_gb": 12.0},
+            {"box": "seedit4me", "est": 1.4,
+             "basis": "table s4m|race|m|mid (n=7) x demand 3.00",
+             "eligible": True, "why": [], "evict": [], "placeable_gb": 40.0},
         ],
-        probability=0.72,
+        extra={"tl_id": "424242", "size": 20.0 * 1_073_741_824.0, "experiment": None},
     )
     ds = parse_decisions([e, event("box_state", "2026-11-01T12:00:01.000Z")])
     assert len(ds) == 1
     d = ds[0]
     assert len(d.candidates) == 2
     assert [c.box for c in d.chosen] == ["seedit4me"]
-    assert d.probability == pytest.approx(0.72)
+    assert [c.box for c in d.rejected] == ["pulsed"]
+    assert d.tl_id == "424242"
     assert d.trigger == "announce"
+
+    s4m = next(c for c in d.candidates if c.box == "seedit4me")
+    assert s4m.score == pytest.approx(1.4)
+    assert s4m.features["size_gb"] == pytest.approx(20.0)
+    assert s4m.features["demand"] == pytest.approx(3.0)
+    assert s4m.features["table_n"] == pytest.approx(7.0)
+    assert s4m.eligible
+
+    pul = next(c for c in d.candidates if c.box == "pulsed")
+    assert not pul.eligible
+    assert pul.why and "busy" in pul.why[0]
 
 
 def test_a_deterministic_decision_has_no_propensity():
-    e = event("decision", "2026-11-01T12:00:00.000Z", hash="abc", candidates=[])
-    assert parse_decisions([e])[0].probability is None
+    e = event("decision", "2026-11-01T12:00:00.000Z", hash="abc", plans=[])
+    d = parse_decisions([e])[0]
+    assert d.probability is None
+    assert d.experiment is None
 
 
 # --- the join and the split ---------------------------------------------------
@@ -428,3 +450,112 @@ def test_the_parquet_reader_filters_by_kind_and_day(tmp_path):
     assert len(list(read_parquet(tmp_path, kinds=["decision"]))) == 2
     assert len(list(read_parquet(tmp_path, days=["2026-11-03"]))) == 2
     assert len(list(read_parquet(tmp_path, kinds=["decision"], days=["2026-11-04"]))) == 1
+
+
+# --- the real emitted shape ---------------------------------------------------
+#
+# These read a slice of the live event log (tests/fixtures/events-sample.jsonl),
+# not hand-made events. The loader was first written against the design doc's
+# prose and silently parsed zero decisions from the real log, because the
+# emitted field is `plans` with `est`, not `candidates` with `score`. A test
+# against made-up events cannot catch that; only a real sample can.
+
+
+from pathlib import Path
+
+FIXTURE = Path(__file__).parent / "fixtures" / "events-sample.jsonl"
+
+
+def real_events() -> list[dict]:
+    from ratio_ml.data import read_jsonl
+
+    if not FIXTURE.exists():  # pragma: no cover
+        pytest.skip(f"{FIXTURE} missing")
+    return list(read_jsonl(FIXTURE))
+
+
+def test_the_fixture_covers_every_ml_relevant_kind():
+    kinds = {e["kind"] for e in real_events()}
+    for k in ("decision", "release", "scrape", "announce", "registration", "action"):
+        assert k in kinds, f"the fixture lost {k}; re-cut it from the live log"
+
+
+def test_decisions_parse_from_the_real_log():
+    ds = parse_decisions(real_events())
+    assert ds, "parsed zero decisions from the real log — the shape drifted again"
+    d = ds[0]
+    assert d.candidates, "a decision with no plans"
+    assert d.tl_id, "no tl_id, so nothing can be joined to the release book"
+    # Every plan carries a box and a score, and the scores are real numbers.
+    for c in d.candidates:
+        assert c.box
+        assert isinstance(c.score, float)
+    # The per-box one-hot in the feature vector only works if the box names
+    # are the ones it knows about.
+    from ratio_ml.features import BOXES
+
+    for c in d.candidates:
+        assert c.box in BOXES, f"unknown box {c.box!r}; update features.BOXES"
+
+
+def test_the_log_records_no_propensity_today():
+    # Not a defect to fix here, but a fact the training code must not paper
+    # over: the baseline is deterministic, so there is nothing to weight by.
+    # If this ever starts failing, the bandit has shipped and the offline
+    # methods can stop treating propensity as absent.
+    ds = parse_decisions(real_events())
+    assert all(d.probability is None for d in ds)
+    assert all(d.experiment is None for d in ds)
+
+
+def test_rejected_plans_carry_their_reasons():
+    # These are the only negative examples the log holds, since the baseline
+    # filters before the guard ever sees a proposal.
+    ds = parse_decisions(real_events())
+    rejected = [c for d in ds for c in d.rejected]
+    assert rejected, "no rejected plans in the sample"
+    assert any(c.why for c in rejected), "a rejected plan with no reason given"
+
+
+def test_the_release_book_builds_and_carries_swarm_curves():
+    from ratio_ml.data import release_index
+
+    book = release_index(real_events())
+    assert book, "the release book is empty"
+    # Sizes come through in GB and are plausible.
+    sized = [r for r in book.values() if r.size_gb > 0]
+    assert sized, "no release in the book has a size"
+    assert all(0.0 < r.size_gb < 2000.0 for r in sized), [r.size_gb for r in sized]
+    # At least one release has a scrape, which is what the generators fit on.
+    scraped = [r for r in book.values() if r.scrapes]
+    assert scraped, "no scrape curves in the book"
+    for r in scraped:
+        # Time-ordered, which demand_at relies on.
+        times = [t for t, *_ in r.scrapes]
+        assert times == sorted(times)
+        assert r.peak_leechers() >= 0
+
+
+def test_demand_is_read_from_the_scrape_before_the_moment_asked():
+    from ratio_ml.data import ReleaseFacts
+
+    t0 = datetime(2026, 11, 3, 12, 0, tzinfo=timezone.utc)
+    r = ReleaseFacts(tl_id="1")
+    r.scrapes = [
+        (t0, 1, 30, 0),
+        (t0 + timedelta(hours=1), 10, 20, 5),
+        (t0 + timedelta(hours=2), 40, 5, 50),
+    ]
+    # Before any scrape: unknown, not zero.
+    assert r.demand_at(t0 - timedelta(minutes=1)) is None
+    # Uses the latest scrape at or before the moment, never a later one.
+    assert r.demand_at(t0 + timedelta(minutes=30)) == pytest.approx(30 / 2.0)
+    assert r.demand_at(t0 + timedelta(hours=1, minutes=30)) == pytest.approx(20 / 11.0)
+    assert r.peak_leechers() == 30
+
+
+def test_demand_recovered_from_the_basis_string():
+    ds = parse_decisions(real_events())
+    withd = [c for d in ds for c in d.candidates if "demand" in c.features]
+    assert withd, "no plan recorded a demand; the basis format changed"
+    assert all(c.features["demand"] >= 0.0 for c in withd)
