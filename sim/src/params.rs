@@ -3,9 +3,13 @@
 //!
 //! The defaults here are the measurements taken off the live fleet while
 //! `ratio-picker.py` ran, and each carries where it came from. They are a
-//! starting point, not the calibration: `calibrate.rs` refits these from the
-//! event log's Parquet export and writes `sim/params/<date>.json`. A rollout
-//! records which parameter set produced it.
+//! starting point and not a calibration — the validation gate fails on them,
+//! which is the correct answer until there is event-log data to fit.
+//!
+//! Fitting them is the next step and is not written yet: it refits each
+//! component from the Parquet export and writes `sim/params/<date>.json`,
+//! which `Params::load` and `rollout --params` already read, so a rollout can
+//! record which parameter set produced it.
 //!
 //! Every field has a `_lo`/`_hi` interval or a spread where one was measured.
 //! `Params::sample` draws a per-episode variant inside those intervals, so a
