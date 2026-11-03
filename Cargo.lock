@@ -1640,6 +1640,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
+name = "rand_distr"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
+dependencies = [
+ "num-traits",
+ "rand 0.8.8",
+]
+
+[[package]]
 name = "rand_pcg"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1675,6 +1685,21 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "tracing-subscriber",
+ "zstd",
+]
+
+[[package]]
+name = "ratio-sim"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rand 0.8.8",
+ "rand_distr",
+ "ratio-manager",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
  "zstd",
 ]
 

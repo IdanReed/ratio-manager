@@ -1,0 +1,17 @@
+rollout — run policies against the ratio simulator and report what each earned.
+
+  --events <path>          replay real releases from an event-log file
+                           (.jsonl or .jsonl.zst). Without this, releases are
+                           SYNTHETIC and the numbers say nothing about the fleet.
+  --params <path>          a calibration artefact (sim/params/<date>.json).
+                           Default: the fleet measurements compiled in.
+  --days <n>               virtual days per episode (default 3)
+  --episodes <n>           episodes per policy, each a fresh seed (default 5)
+  --per-day <n>            synthetic release arrivals per day (default 900)
+  --freeleech-share <f>    synthetic freeleech fraction (default 0.08)
+  --seed <n>               base seed (default 1)
+  --validate               exit non-zero if the validation gate fails
+  -h, --help               this text
+
+The gate: the simulator must reproduce each box's measured median race ratio
+before any policy trained against it means anything.

@@ -4,21 +4,10 @@
 //! guard; everything lands in an append-only event log that doubles as the
 //! training dataset; `/api/v1` and the dashboard sit on top.
 
-mod actions;
-mod api;
-mod autobrr;
-mod bencode;
-mod config;
-mod drivers;
-mod events;
-mod export;
-mod guard;
-mod policy;
-mod qbit;
-mod scout;
-mod state;
-mod store;
-mod tl;
+use ratio_manager::{
+    actions, api, autobrr, config, drivers, events, export, guard, policy, qbit, scout, state,
+    store, tl,
+};
 
 use anyhow::{Context, Result};
 use serde_json::json;

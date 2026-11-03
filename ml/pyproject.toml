@@ -1,0 +1,27 @@
+[project]
+name = "ratio-ml"
+version = "0.1.0"
+description = "Training and evaluation for the ratio manager's learned policy"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "zstandard>=0.22",
+]
+
+[project.optional-dependencies]
+# The Parquet path. The JSONL path needs only zstandard.
+parquet = ["pyarrow>=15"]
+# The learned generators and the decision transformer. Not installed on the
+# services VM; train on the desktop.
+torch = ["torch>=2.2"]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ratio_ml*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

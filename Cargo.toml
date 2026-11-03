@@ -5,6 +5,14 @@ edition = "2021"
 description = "TorrentLeech ratio building across home and rented seedboxes: sensors, an event bus, a baseline policy, a guard, drivers, an event log and a dashboard"
 license = "MIT"
 
+# `sim` links this crate's guard and baseline rather than copying them, so a
+# policy cannot learn to propose actions the real guard rejects. The service
+# image builds `-p ratio-manager` only; sim is a development tool and ships
+# nowhere. See ServerNotes/designs/ratio-ml.md.
+[workspace]
+members = ["sim"]
+resolver = "2"
+
 [dependencies]
 anyhow = "1"
 arrow = { version = "54", default-features = false }

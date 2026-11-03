@@ -19,6 +19,17 @@
           filter = path: type: !(pkgs.lib.hasInfix "/target" path) && !(pkgs.lib.hasInfix "/dev/" path);
         };
         cargoLock.lockFile = ./Cargo.lock;
+        # The workspace also holds `sim`, a development tool that ships
+        # nowhere, so build and test this package alone: the image must not
+        # carry the simulator or its dependencies.
+        cargoBuildFlags = [
+          "-p"
+          "ratio-manager"
+        ];
+        cargoTestFlags = [
+          "-p"
+          "ratio-manager"
+        ];
         meta.mainProgram = "ratio-manager";
       };
 
