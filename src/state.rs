@@ -29,7 +29,7 @@ pub struct BoxView {
     pub server: Value,
     /// Per hash: (unix time, uploaded bytes), oldest first.
     pub up_hist: HashMap<String, VecDeque<(f64, f64)>>,
-    /// (unix time, up + down bytes/s) over the last 30 min.
+    /// (unix time, upload bytes/s) over the last 30 min.
     pub speeds: VecDeque<(f64, f64)>,
     pub firewalled_since: Option<i64>,
     pub allowance_spent: bool,

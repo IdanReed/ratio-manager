@@ -75,7 +75,9 @@ boxes:
   seedit4me:
     expires: "2026-11-30"
     cost_eur_month: 11.99
-    traffic: { quota_tb: 5, reset_day: 9, throttle_mbit: 10, mode: race_to_cap, base_tb: 0 }
+    # Past the allowance the host holds upload to ~100 Mbit (measured flat at
+    # 11-12 MiB/s) and leaves download alone.
+    traffic: { quota_tb: 5, reset_day: 9, throttle_mbit: 100, mode: race_to_cap, base_tb: 0 }
     disk: { quota_gb: 1500, reserve_gb: 50 }
     evict: true
     download_cap_mib: 100

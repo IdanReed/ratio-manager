@@ -32,7 +32,10 @@ ratio-manager check-settings  # print the default settings
 
 The registry (`registry.yaml`) says which boxes exist, how to reach them and
 which environment variables hold their logins; settings are edited in the UI
-and stored as overrides of `src/defaults.yaml`.
+and stored as overrides of `src/defaults.yaml`. A settings change is accepted
+only with forward auth's `X-Authentik-Username` (403 otherwise): a person
+makes it in the UI, while a script or agent on the host proposes it. Against
+the local rig, send the header yourself.
 
 ## Develop
 

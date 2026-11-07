@@ -175,7 +175,9 @@ async fn poll_ok(app: &Arc<App>, cfg: &BoxCfg, q: &Qbit, exec: &Executor, st: &m
         v.all_sizes = sizes;
         v.server = st.server.clone();
         v.note_uploads(tnow);
-        v.speeds.push_back((tnow, f(&st.server, "up_info_speed") + f(&st.server, "dl_info_speed")));
+        // Upload only: a host that throttles past its allowance throttles
+        // upload, and seedit4me keeps downloading at full speed after it.
+        v.speeds.push_back((tnow, f(&st.server, "up_info_speed")));
         while v.speeds.front().map(|(t, _)| tnow - t > 1800.0).unwrap_or(false) {
             v.speeds.pop_front();
         }

@@ -71,13 +71,15 @@ async fn healthz(State(api): State<Api>) -> Json<Value> {
     Json(json!({"ok": true, "seq": api.app.bus.last_seq(), "halt": api.app.halted().is_some()}))
 }
 
+/// The user forward auth signed in. Caddy sets X-Authentik-Username from the
+/// outpost and strips any a client sent, so a request without it reached the
+/// loopback port directly.
+fn forward_auth_user(headers: &HeaderMap) -> Option<&str> {
+    headers.get("x-authentik-username").and_then(|v| v.to_str().ok()).filter(|s| !s.is_empty())
+}
+
 fn who(headers: &HeaderMap) -> String {
-    let user = headers
-        .get("x-authentik-username")
-        .and_then(|v| v.to_str().ok())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("operator");
-    format!("manual:{user}")
+    format!("manual:{}", forward_auth_user(headers).unwrap_or("operator"))
 }
 
 async fn state(State(api): State<Api>) -> Json<Value> {
@@ -180,7 +182,15 @@ async fn get_settings(State(api): State<Api>) -> Json<Value> {
 
 /// Body: the full settings document (as the UI edits it). Stored as the
 /// overrides that differ from the defaults; validated first.
+///
+/// Only through forward auth: settings are a person's decision, made in the
+/// UI. A script or an agent on the host proposes a change; it does not make
+/// one.
 async fn put_settings(State(api): State<Api>, headers: HeaderMap, Json(body): Json<Value>) -> Response {
+    if forward_auth_user(&headers).is_none() {
+        let why = "settings change only through the UI (forward auth); propose the change instead";
+        return (StatusCode::FORBIDDEN, Json(json!({"ok": false, "error": why}))).into_response();
+    }
     let doc = body.get("settings").cloned().unwrap_or(body);
     let overrides = diff(&defaults_value(), &doc).unwrap_or(json!({}));
     match Settings::from_overrides(&overrides) {
